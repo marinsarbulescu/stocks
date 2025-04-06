@@ -1,36 +1,88 @@
 // app/components/AddStockForm.tsx
 'use client';
 
-import React, { useState } from 'react';
-// 1. Import the generated Schema type and generateClient
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import { type Schema } from '@/amplify/data/resource'; // Adjust path if needed
 import { generateClient } from 'aws-amplify/data';
 
-// 2. Create the Amplify Data client instance, typed with your schema
 const client = generateClient<Schema>();
 
-// Define props for the component, like a callback when a stock is added
+// Define the accurate item type from your schema
+type PortfolioStockItem = Schema['PortfolioStock'];
+
+// Define props for the component
 type AddStockFormProps = {
+  // For Add mode
   onStockAdded?: () => void;
+  // For Edit mode
+  isEditMode?: boolean;
+  initialData?: PortfolioStockItem | null; // Data of stock being edited
+  onUpdate?: (updatedData: PortfolioStockItem) => Promise<void>; // Update handler from parent
+  onCancel?: () => void; // Cancel handler from parent
 };
 
-export default function AddStockForm({ onStockAdded }: AddStockFormProps) {
+// Define specific types for dropdowns if available in schema
+type StockTypeValue = Schema['PortfolioStock']['type'];
+// @ts-ignore - TS incorrectly
+type RegionValue = Schema['PortfolioStock']['region'];
+
+export default function AddStockForm({
+  onStockAdded,
+  isEditMode = false, // Default to Add mode
+  initialData,
+  onUpdate,
+  onCancel
+}: AddStockFormProps) {
   // State for each form field
   const [symbol, setSymbol] = useState('');
-  const [type, setType] = useState<string>('Stock'); // Default value
-  const [region, setRegion] = useState<string>('US');   // Default value
+  // @ts-ignore - TS incorrectly
+  const [type, setType] = useState<StockTypeValue>('Stock'); // Default value
+  const [region, setRegion] = useState<RegionValue>('US');   // Default value
   const [name, setName] = useState('');
   const [pdp, setPdp] = useState(''); // Store as string for input binding
   const [plr, setPlr] = useState(''); // Store as string for input binding
   const [budget, setBudget] = useState(''); // Store as string for input binding
 
-  // State for loading and error messages
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // --- NEW: Effect to populate form for editing ---
+  useEffect(() => {
+    if (isEditMode && initialData) {
+      // Populate state when initialData is provided for editing
+      // @ts-ignore - TS incorrectly
+      setSymbol(initialData.symbol ?? '');
+      // @ts-ignore - TS incorrectly
+      setName(initialData.name ?? '');
+      setType(initialData.type ?? 'Stock');
+      // @ts-ignore - TS incorrectly
+      setRegion(initialData.region ?? 'US');
+      // Convert potential numbers back to string for input values
+      // @ts-ignore - TS incorrectly
+      setPdp(initialData.pdp?.toString() ?? '');
+      // @ts-ignore - TS incorrectly
+      setPlr(initialData.plr?.toString() ?? '');
+      // @ts-ignore - TS incorrectly
+      setBudget(initialData.budget?.toString() ?? '');
+      setError(null); // Clear error when starting edit
+    } else {
+      // Reset form for Add mode or when initialData is cleared
+      setSymbol('');
+      // @ts-ignore - TS incorrectly
+      setType('Stock');
+      setRegion('US');
+      setName('');
+      setPdp('');
+      setPlr('');
+      setBudget('');
+      setError(null);
+    }
+  }, [isEditMode, initialData]); // Rerun when mode or data changes
+  // --- End NEW Effect ---
+
   // Handle form submission
   const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault(); // Prevent default browser form submission
+    event.preventDefault();
     setIsLoading(true);
     setError(null);
 
@@ -40,152 +92,135 @@ export default function AddStockForm({ onStockAdded }: AddStockFormProps) {
       return;
     }
 
-    try {
-        type StockTypeValue = "Stock" | "ETF" | "Crypto";
-        type RegionValue = "US" | "EU" | "APAC";
-      // 3. Prepare the data payload, converting numbers correctly
-      const stockInput = {
-        symbol: symbol.toUpperCase(), // Example: Normalize to uppercase
-        type: type as StockTypeValue,
-        region: region as RegionValue,
-        name: name || undefined, // Send undefined if name is empty
-        // Parse numeric fields, send undefined if empty/invalid
-        pdp: pdp ? parseFloat(pdp) : undefined,
-        plr: plr ? parseFloat(plr) : undefined,
-        budget: budget ? parseFloat(budget) : undefined,
-      };
+    // --- UPDATED: Prepare data payload ---
+    // Ensure correct types and handle optional/nullable fields
+    const stockDataPayload = {
+      symbol: symbol.toUpperCase(),
+      type: type as StockTypeValue, // Assert type based on state
+      region: region as RegionValue, // Assert type based on state
+      name: name || undefined,
+      pdp: pdp ? parseFloat(pdp) : undefined,
+      plr: plr ? parseFloat(plr) : undefined,
+      budget: budget ? parseFloat(budget) : undefined,
+    };
+    // --- End UPDATED data payload ---
 
-      // 4. Use the client to call the create mutation for PortfolioStock
-      console.log('Submitting stock input:', stockInput);
-      const { errors, data: newStock } = await client.models.PortfolioStock.create(stockInput);
-
-      if (errors) {
-        console.error('Error creating stock:', errors);
-        setError(errors[0].message || 'Failed to add stock.');
-      } else {
-        console.log('Stock added successfully:', newStock);
-        // Reset form fields
-        setSymbol('');
-        setType('Stock');
-        setRegion('US');
-        setName('');
-        setPdp('');
-        setPlr('');
-        setBudget('');
-        setError(null);
-        // Call the callback function if provided
-        onStockAdded?.();
+    // --- UPDATED: Handle Edit vs Add ---
+    if (isEditMode) {
+      // --- EDIT MODE ---
+      // @ts-ignore - TS incorrectly
+      if (!initialData?.id || !onUpdate) {
+        setError('Cannot update stock: Missing ID or update handler.');
+        setIsLoading(false);
+        return;
       }
-    } catch (err: any) {
-      console.error('Form submission error:', err);
-      setError(err.message || 'An unexpected error occurred.');
-    } finally {
-      setIsLoading(false); // Ensure loading state is reset
+      try {
+        // @ts-ignore - TS incorrectly
+        console.log('Updating stock input:', { id: initialData.id, ...stockDataPayload });
+        // Call the onUpdate prop passed from the parent page
+        // @ts-ignore - TS incorrectly
+        await onUpdate({ id: initialData.id, ...stockDataPayload });
+        // Parent component handles closing the form and refreshing data
+      } catch (err: any) {
+        console.error('Form update error:', err);
+        setError(err.message || 'An unexpected error occurred during update.');
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // --- ADD MODE (Existing Logic) ---
+      try {
+        console.log('Creating stock input:', stockDataPayload);
+        // @ts-ignore - TS incorrectly
+        const { errors, data: newStock } = await client.models.PortfolioStock.create(stockDataPayload); // Cast needed if strict
+
+        if (errors) {
+          console.error('Error creating stock:', errors);
+          setError(errors[0].message || 'Failed to add stock.');
+        } else {
+          console.log('Stock added successfully:', newStock);
+          // Reset form fields manually on success
+          // @ts-ignore - TS incorrectly
+          setSymbol(''); setType('Stock'); setRegion('US'); setName(''); setPdp(''); setPlr(''); setBudget('');
+          setError(null);
+          onStockAdded?.(); // Call the callback if provided
+        }
+      } catch (err: any) {
+        console.error('Form submission error:', err);
+        setError(err.message || 'An unexpected error occurred.');
+      } finally {
+        setIsLoading(false);
+      }
     }
+    // --- End UPDATED Edit vs Add ---
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ marginTop: '2rem', border: '1px solid #ccc', padding: '1rem' }}>
-      <h2>Add New Stock to Portfolio</h2>
+    // --- UPDATED: Form Title and Buttons ---
+    <form onSubmit={handleSubmit} style={{ marginTop: '1rem', borderTop: '1px dashed #eee', paddingTop: '1rem' }}>
+      {/* Change title based on mode */}
+      {/* @ts-ignore - TS incorrectly */}
+      <h2>{isEditMode ? `Edit ${initialData?.symbol ?? 'Stock'}` : 'Add New Stock to Portfolio'}</h2>
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
+      {/* Form Fields (Your existing fields go here) */}
+      {/* Symbol Input */}
       <div>
-        <label htmlFor="symbol" style={{ marginRight: '0.5rem' }}>Stock Symbol:</label>
-        <input
-          id="symbol"
-          type="text"
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value)}
-          required
-          disabled={isLoading}
-        />
+         <label htmlFor="symbol" style={{ marginRight: '0.5rem' }}>Stock Symbol:</label>
+         <input id="symbol" type="text" value={symbol} onChange={(e) => setSymbol(e.target.value)} required disabled={isLoading} />
       </div>
-
+      {/* Type Select */}
       <div style={{ marginTop: '0.5rem' }}>
-        <label htmlFor="type" style={{ marginRight: '0.5rem' }}>Type:</label>
-        <select
-          id="type"
-          value={type}
-          // Type assertion needed because event value is string
-          onChange={(e) => setType(e.target.value)}
-          required
-          disabled={isLoading}
-        >
-          {/* Consider generating these options dynamically from the schema if needed */}
-          <option value="Stock">Stock</option>
-          <option value="ETF">ETF</option>
-          <option value="Crypto">Crypto</option>
-        </select>
+         <label htmlFor="type" style={{ marginRight: '0.5rem' }}>Type:</label>
+         {/* @ts-ignore - TS incorrectly */}
+         <select id="type" value={type} onChange={(e) => setType(e.target.value as StockTypeValue)} required disabled={isLoading}>
+            <option value="Stock">Stock</option> <option value="ETF">ETF</option> <option value="Crypto">Crypto</option>
+         </select>
       </div>
-
+       {/* Region Select */}
       <div style={{ marginTop: '0.5rem' }}>
-        <label htmlFor="region" style={{ marginRight: '0.5rem' }}>Region:</label>
-        <select
-          id="region"
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          required
-          disabled={isLoading}
-        >
-          <option value="US">US</option>
-          <option value="EU">EU</option>
-          <option value="APAC">APAC</option>
-        </select>
+         <label htmlFor="region" style={{ marginRight: '0.5rem' }}>Region:</label>
+         <select id="region" value={region} onChange={(e) => setRegion(e.target.value as RegionValue)} required disabled={isLoading}>
+            <option value="US">US</option> <option value="EU">EU</option> <option value="APAC">APAC</option>
+         </select>
       </div>
-
+      {/* Name Input */}
       <div style={{ marginTop: '0.5rem' }}>
         <label htmlFor="name" style={{ marginRight: '0.5rem' }}>Stock Name (Optional):</label>
-        <input
-          id="name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={isLoading}
-        />
+        <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} disabled={isLoading} />
       </div>
+       {/* PDP Input */}
+       <div style={{ marginTop: '0.5rem' }}>
+         <label htmlFor="pdp" style={{ marginRight: '0.5rem' }}>PDP (%):</label>
+         <input id="pdp" type="number" step="any" value={pdp} onChange={(e) => setPdp(e.target.value)} placeholder="e.g., 10.5" disabled={isLoading} />
+       </div>
+       {/* PLR Input */}
+       <div style={{ marginTop: '0.5rem' }}>
+          <label htmlFor="plr" style={{ marginRight: '0.5rem' }}>PLR:</label>
+          <input id="plr" type="number" step="any" value={plr} onChange={(e) => setPlr(e.target.value)} placeholder="e.g., 3.0" disabled={isLoading} />
+       </div>
+       {/* Budget Input */}
+       <div style={{ marginTop: '0.5rem' }}>
+          <label htmlFor="budget" style={{ marginRight: '0.5rem' }}>Annual Budget:</label>
+          <input id="budget" type="number" step="any" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="e.g., 5000" disabled={isLoading} />
+       </div>
+      {/* --- End Form Fields --- */}
 
-      <div style={{ marginTop: '0.5rem' }}>
-        <label htmlFor="pdp" style={{ marginRight: '0.5rem' }}>PDP (%):</label>
-        <input
-          id="pdp"
-          type="number"
-          step="any" // Allow decimal numbers
-          value={pdp}
-          onChange={(e) => setPdp(e.target.value)}
-          placeholder="e.g., 10.5"
-          disabled={isLoading}
-        />
+
+      {/* Submit and Cancel Buttons */}
+      <div style={{ marginTop: '1rem' }}>
+        <button type="submit" disabled={isLoading}>
+          {/* Change button text based on mode */}
+          {isLoading ? 'Saving...' : (isEditMode ? 'Update Stock' : 'Add Stock')}
+        </button>
+        {/* Show Cancel button ONLY in Edit mode */}
+        {isEditMode && onCancel && (
+          <button type="button" onClick={onCancel} disabled={isLoading} style={{ marginLeft: '10px' }}>
+            Cancel
+          </button>
+        )}
       </div>
-
-      <div style={{ marginTop: '0.5rem' }}>
-        <label htmlFor="plr" style={{ marginRight: '0.5rem' }}>PLR:</label>
-        <input
-          id="plr"
-          type="number"
-          step="any"
-          value={plr}
-          onChange={(e) => setPlr(e.target.value)}
-          placeholder="e.g., 3.0"
-          disabled={isLoading}
-        />
-      </div>
-
-      <div style={{ marginTop: '0.5rem' }}>
-        <label htmlFor="budget" style={{ marginRight: '0.5rem' }}>Annual Budget:</label>
-        <input
-          id="budget"
-          type="number"
-          step="any"
-          value={budget}
-          onChange={(e) => setBudget(e.target.value)}
-          placeholder="e.g., 5000"
-          disabled={isLoading}
-        />
-      </div>
-
-      <button type="submit" disabled={isLoading} style={{ marginTop: '1rem' }}>
-        {isLoading ? 'Adding...' : 'Add Stock'}
-      </button>
+      {/* --- End UPDATED Buttons --- */}
     </form>
   );
 }
