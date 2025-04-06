@@ -1,20 +1,15 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./app.css";
-
 import './globals.css';
-
-// 1. Import Amplify UI styles
 import '@aws-amplify/ui-react/styles.css';
-
-// 2. Import the configuration component
-import ConfigureAmplifyClientSide from '@/app/components/ConfigureAmplifyClientSide'; // Adjust path if needed
+import ConfigureAmplifyClientSide from '@/app/components/ConfigureAmplifyClientSide'; // Adjust path if neede
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Stocks App',
-  description: 'Authenticated Stock Tracking',
+  title: 'Stocks Portfolio App', // Updated title
+  description: 'Track your stock portfolio',
 };
 
 export default function RootLayout({
@@ -25,10 +20,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {/* 3. Render the configuration component */}
-        <ConfigureAmplifyClientSide />
+      {/* Configure Amplify client side */}
+      <ConfigureAmplifyClientSide />
+
+      {/* Render children directly or within a main tag */}
+      <main style={{ padding: '0 1rem' }}>
         {children}
-      </body>
+      </main>
+
+    </body>
     </html>
   );
 }
