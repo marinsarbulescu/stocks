@@ -5,6 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '@/amplify/data/resource'; // Adjust path
 import AddStockForm from '../../components/AddStockForm';
+import { FaEdit, FaTrashAlt } from 'react-icons/fa';
+import Link from 'next/link';
 
 // Create client instance
 const client = generateClient<Schema>();
@@ -115,58 +117,91 @@ const handleUpdateStock = async (updatedData: Schema['PortfolioStock']) => {
 };
 // --- End handleUpdateStock ---
 
-  return (
-    <div>
-      <h1>Your Stock Portfolio</h1>
-  
-      {/* Loading Indicator */}
-      {isLoading && <p>Loading stocks...</p>}
-  
-      {/* Error Display */}
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-  
-      {/* Stock List (Only show list if NOT editing, or adjust UI later) */}
-      {!isLoading && !error && !isEditing && ( // Conditionally hide list while editing? Or keep visible? Your choice.
-        <ul>
+return (
+  <div>
+    <h1>Your Stock Portfolio</h1>
+
+    {/* Loading Indicator */}
+    {isLoading && <p>Loading stocks...</p>}
+
+    {/* Error Display */}
+    {error && <p style={{ color: 'red' }}>Error: {error}</p>}
+
+    {/* Table Display - Render only when not loading, no error, and NOT editing */}
+    {/* You might adjust the !isEditing condition later if you prefer the table visible during edit */}
+    {!isLoading && !error && !isEditing && (
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid #ccc', textAlign: 'left' }}>
+            {/* Add table headers - add onClick for sorting later */}
+            <th style={{ padding: '8px' }}>Symbol</th>
+            <th style={{ padding: '8px' }}>Name</th>
+            <th style={{ padding: '8px' }}>Type</th>
+            <th style={{ padding: '8px' }}>Region</th>
+            <th style={{ padding: '8px' }}>PDP (%)</th>
+            <th style={{ padding: '8px' }}>PLR</th>
+            <th style={{ padding: '8px' }}>Budget ($)</th>
+            <th style={{ padding: '8px' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
           {portfolioStocks.length === 0 ? (
-            <li>Your portfolio is currently empty. Add stocks via the Add Stocks page.</li>
+            <tr>
+              <td colSpan={8} style={{ textAlign: 'center', padding: '1rem' }}>
+                Your portfolio is currently empty.
+              </td>
+            </tr>
           ) : (
-            // The .map() code with Edit/Delete buttons goes here (as modified above)
+            // Use portfolioStocks.map for now, we'll add sorting later
             portfolioStocks.map((stock) => (
-               <li key={stock.id} /* ... */ >
-                  <strong>{stock.symbol?.toUpperCase()}</strong> ({stock.name || 'No Name'})
-                  <br />
-                  <small>Type: {stock.type} | Region: {stock.region}</small>
-                  <br />
-                  <small>PDP: {stock.pdp ?? 'N/A'}% | PLR: {stock.plr ?? 'N/A'} | Budget: ${stock.budget ?? 'N/A'}</small>
-                  <br /> {/* Optional spacing */}
-                  
-                  <button onClick={() => handleEditClick(stock)} /* ... */>Edit</button>
-                  <button onClick={() => handleDeleteStock(stock.id)} /* ... */>Delete</button>
-               </li>
+              <tr key={stock.id} style={{ borderBottom: '1px solid #eee' }}>
+                <Link href={`/txns/${stock.id}/add`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                  <td style={{ padding: '8px' }}>{stock.symbol?.toUpperCase()}</td>
+                </Link>
+                <td style={{ padding: '8px' }}>{stock.name || '--'}</td>
+                <td style={{ padding: '8px' }}>{stock.type}</td>
+                <td style={{ padding: '8px' }}>{stock.region}</td>
+                <td style={{ padding: '8px' }}>{stock.pdp ?? '--'}</td>
+                <td style={{ padding: '8px' }}>{stock.plr ?? '--'}</td>
+                <td style={{ padding: '8px' }}>{stock.budget ?? '--'}</td>
+                <td style={{ padding: '8px', textAlign: 'center' }}>
+                  {/* Edit Button with Icon */}
+                  <button
+                    onClick={() => handleEditClick(stock)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', marginRight: '5px', color: 'blue' }} // Minimalist style
+                    title="Edit Stock" // Tooltip
+                  >
+                    <FaEdit /> {/* Edit Icon */}
+                  </button>
+                  {/* Delete Button with Icon */}
+                  <button
+                    onClick={() => handleDeleteStock(stock.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', color: 'red' }} // Minimalist style
+                    title="Delete Stock" // Tooltip
+                  >
+                    <FaTrashAlt /> {/* Delete Icon */}
+                  </button>
+                </td>
+              </tr>
             ))
           )}
-        </ul>
-      )}
-  
-      {/* --- Add Conditional Edit UI Placeholder --- */}
-      {isEditing && stockToEdit && (
-        <div style={{ marginTop: '2rem', border: '1px solid #ccc', padding: '1rem' }}>
-          <h2>Edit Stock: {stockToEdit.symbol?.toUpperCase()}</h2>
-          <p>ID: {stockToEdit.id}</p>
-          
-          <AddStockForm
-            isEditMode={true}
-            // @ts-ignore - TS incorrectly
-            initialData={stockToEdit}
-            onUpdate={handleUpdateStock} // Pass the update handler
-            onCancel={handleCancelEdit}   // Pass the cancel handler
-          />
+        </tbody>
+      </table>
+    )}
 
-        </div>
-      )}
-      {/* --- End Conditional Edit UI Placeholder --- */}
-  
-    </div>
-  );
+    {/* Conditional Edit Form (Keep this as it was) */}
+    {isEditing && stockToEdit && (
+      <div style={{ marginTop: '2rem', border: '1px solid #ccc', padding: '1rem' }}>
+        <h2>Edit Stock: {stockToEdit.symbol?.toUpperCase()}</h2>
+        <AddStockForm
+          isEditMode={true}
+          // @ts-ignore
+          initialData={stockToEdit}
+          onUpdate={handleUpdateStock}
+          onCancel={handleCancelEdit}
+        />
+      </div>
+    )}
+  </div>
+);
 }

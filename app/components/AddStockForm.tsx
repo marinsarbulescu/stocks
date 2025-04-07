@@ -16,7 +16,7 @@ type AddStockFormProps = {
   onStockAdded?: () => void;
   // For Edit mode
   isEditMode?: boolean;
-  initialData?: PortfolioStockItem | null; // Data of stock being edited
+  initialData?: Partial<PortfolioStockItem> | null; // Data of stock being edited
   onUpdate?: (updatedData: PortfolioStockItem) => Promise<void>; // Update handler from parent
   onCancel?: () => void; // Cancel handler from parent
 };
@@ -54,9 +54,9 @@ export default function AddStockForm({
       setSymbol(initialData.symbol ?? '');
       // @ts-ignore - TS incorrectly
       setName(initialData.name ?? '');
-      setType(initialData.type ?? 'Stock');
-      // @ts-ignore - TS incorrectly
-      setRegion(initialData.region ?? 'US');
+      setType((initialData.type ?? 'Stock') as StockTypeValue);
+      // @ts-ignore
+      setRegion((initialData.region ?? 'US') as RegionValue);
       // Convert potential numbers back to string for input values
       // @ts-ignore - TS incorrectly
       setPdp(initialData.pdp?.toString() ?? '');
@@ -68,9 +68,9 @@ export default function AddStockForm({
     } else {
       // Reset form for Add mode or when initialData is cleared
       setSymbol('');
-      // @ts-ignore - TS incorrectly
-      setType('Stock');
-      setRegion('US');
+      // @ts-ignore
+      setType('Stock' as StockTypeValue);
+      setRegion('US' as RegionValue);
       setName('');
       setPdp('');
       setPlr('');
