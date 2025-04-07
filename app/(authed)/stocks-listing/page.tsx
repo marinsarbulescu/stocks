@@ -155,9 +155,11 @@ return (
             // Use portfolioStocks.map for now, we'll add sorting later
             portfolioStocks.map((stock) => (
               <tr key={stock.id} style={{ borderBottom: '1px solid #eee' }}>
-                <Link href={`/txns/${stock.id}/add`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                  <td style={{ padding: '8px' }}>{stock.symbol?.toUpperCase()}</td>
-                </Link>
+                <td style={{ padding: '8px' }}>
+                    <Link href={`/txns/${stock.id}/add`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      {stock.symbol?.toUpperCase()}
+                  </Link>
+                </td>
                 <td style={{ padding: '8px' }}>{stock.name || '--'}</td>
                 <td style={{ padding: '8px' }}>{stock.type}</td>
                 <td style={{ padding: '8px' }}>{stock.region}</td>
