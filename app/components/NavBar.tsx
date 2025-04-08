@@ -28,6 +28,7 @@ export default function NavBar() {
       <Link href="/" style={linkStyles}>Home</Link>
       <Link href="/add-stocks" style={linkStyles}>Add Stocks</Link>
       <Link href="/stocks-listing" style={linkStyles}>Portfolio</Link>
+      <Link href="/goals" style={linkStyles}>Goals</Link>
       <Link href="/account" style={linkStyles}>Account</Link>
       {/* Optional: Add user info or sign out here */}
       {/* {user && <span style={{ color: 'grey', marginLeft: '2rem' }}>Welcome, {user.username}</span>} */}

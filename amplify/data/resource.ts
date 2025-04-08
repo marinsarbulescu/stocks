@@ -9,7 +9,6 @@ const txnSignalEnum = a.enum(['_5DD', 'Cust', 'Initial', 'EOM', 'LBD', 'TP']);
 
 /* Define the schema */
 const schema = a.schema({
-  // Add Enums to the schema so they are usable types
   StockType: stockTypeEnum,
   Region: regionEnum,
   TxnAction: txnActionEnum,
@@ -18,9 +17,6 @@ const schema = a.schema({
   // Define the model for storing portfolio stocks
   PortfolioStock: a
     .model({
-      // Amplify automatically adds id, createdAt, updatedAt
-      // The owner field is implicitly added by the .authorization() rule below
-
       symbol: a.string().required(), // Stock symbol, required
       type: a.ref('StockType').required(), // Reference the StockType enum, required
       region: a.ref('Region').required(),   // Reference the Region enum, required
@@ -35,10 +31,7 @@ const schema = a.schema({
 
   Transaction: a
     .model({
-      // Fields based on your requirements:
       date: a.date().required(),           // Transaction date (YYYY-MM-DD)
-      // Removed symbol, using relationship instead
-      // symbol: a.string().required(),
       action: a.ref('TxnAction').required(), // Reference the TxnAction enum
       signal: a.ref('TxnSignal'),           // Reference the TxnSignal enum (optional?)
       price: a.float(),                     // Price (optional? required?)
@@ -47,6 +40,18 @@ const schema = a.schema({
       // Define the relationship back to PortfolioStock
       portfolioStockId: a.id().required(), // Foreign key ID
       portfolioStock: a.belongsTo('PortfolioStock', 'portfolioStockId'), // Define the relationship
+    })
+    .authorization((allow) => [allow.owner()]),
+
+PortfolioGoals: a
+    .model({
+      totalBudget: a.float(),       // Annual total budget (optional float)
+      usBudgetPercent: a.float(),   // Annual US budget % (optional float)
+      intBudgetPercent: a.float(),  // Annual Int budget % (optional float)
+      usStocksTarget: a.integer(),  // # of US stocks target (optional integer)
+      usEtfsTarget: a.integer(),    // # of US ETFs target (optional integer)
+      intStocksTarget: a.integer(), // # of Int stocks target (optional integer)
+      intEtfsTarget: a.integer(),   // # of Int ETFs target (optional integer)
     })
     .authorization((allow) => [allow.owner()]),
 });
