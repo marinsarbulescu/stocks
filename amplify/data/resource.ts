@@ -36,8 +36,7 @@ const schema = a.schema({
       signal: a.ref('TxnSignal'),           // Reference the TxnSignal enum (optional?)
       price: a.float(),                     // Price (optional? required?)
       investment: a.float(),                // Investment amount (optional? required?)
-
-      // Define the relationship back to PortfolioStock
+      shares: a.float(),
       portfolioStockId: a.id().required(), // Foreign key ID
       portfolioStock: a.belongsTo('PortfolioStock', 'portfolioStockId'), // Define the relationship
     })

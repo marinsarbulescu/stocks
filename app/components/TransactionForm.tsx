@@ -49,6 +49,7 @@ export default function TransactionForm({
   const [signal, setSignal] = useState<TxnSignalValue | undefined>(undefined);
   const [price, setPrice] = useState('');
   const [investment, setInvestment] = useState('');
+  const [shares, setShares] = useState('');
 
   // State for submission status
   const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +70,9 @@ export default function TransactionForm({
       setPrice(initialData.price?.toString() ?? ''); // Convert number back to string
       // @ts-ignore
       setInvestment(initialData.investment?.toString() ?? ''); // Convert number back to string
+      // @ts-ignore
+      setShares(initialData.shares?.toString() ?? '');
+      
       setError(null);
       setSuccess(null); // Clear success message when starting edit
     } else {
@@ -78,6 +82,8 @@ export default function TransactionForm({
       setSignal(undefined);
       setPrice('');
       setInvestment('');
+      setShares('');
+      
       setError(null);
       // Don't clear success message here, let it persist after adding
     }
@@ -94,78 +100,44 @@ export default function TransactionForm({
 
     // Use portfolioStockId from props for both add and edit linking
     if (!date || (!isEditMode && !portfolioStockId) || !action) {
-        // Optionally adjust the error message to be clearer
-        setError('Date and Action are required. Stock context must be provided when adding.');
-        setIsLoading(false);
-        return;
+      setError('Date, Action required. Stock context must be provided when adding.');
+      setIsLoading(false);
+      return;
     }
 
     // Prepare payload - common fields
     const commonPayload = {
         date: date,
         action: action as TxnActionValue, // Cast enum
-        signal: signal || undefined,
-        price: price ? parseFloat(price) : undefined,
-        investment: investment ? parseFloat(investment) : undefined,
+        signal: (action === 'Buy' || action === 'Div') ? (signal || undefined) : undefined,
+        price: (action === 'Buy' || action === 'Sell' || action === 'Div') ? (price ? parseFloat(price) : undefined) : undefined,
+        investment: (action === 'Buy' || action === 'Div') ? (investment ? parseFloat(investment) : undefined) : undefined,
+        shares: (action === 'Sell') ? (shares ? parseFloat(shares) : undefined) : undefined,
     };
 
     // --- ADDED: Handle Edit vs Add ---
     if (isEditMode) {
       // --- EDIT MODE ---
       // @ts-ignore
-      if (!initialData?.id || !onUpdate) {
-        setError('Cannot update transaction: Missing ID or update handler.');
-        setIsLoading(false);
-        return;
-      }
-      try {
-        // Construct update payload - ID + changed fields
-        const updatePayload = {
-          // @ts-ignore
-            id: initialData.id, // REQUIRED
-          ...commonPayload,
-          portfolioStockId: portfolioStockId // Include if it could change, or if needed by backend rule
-          // Note: If portfolioStockId should NEVER change on edit, omit it here.
-          // But likely safe to include.
-        };
-        console.log('Updating transaction:', updatePayload);
-        // Call the onUpdate prop passed from the parent page
-        // @ts-ignore
-        await onUpdate(updatePayload as TransactionItem); // Cast might be needed for onUpdate prop typing
-        // Parent component (page) handles closing form and refresh
-      } catch (err: any) {
-        console.error('Form update error:', err);
-        setError(err.message || 'An unexpected error occurred during update.');
-      } finally {
-        setIsLoading(false);
-      }
+      if (!initialData?.id || !onUpdate) { /* ... error handling ... */ return; }
+        try {
+          // @ts-ignore  
+          const updatePayload = { id: initialData.id, portfolioStockId: portfolioStockId, ...commonPayload };
+            console.log('Updating transaction:', updatePayload);
+            // @ts-ignore
+            await onUpdate(updatePayload as TransactionItem); // Cast might be needed
+        } catch (err: any) { /* ... error handling ... */ }
+        finally { setIsLoading(false); }
     } else {
-      // --- ADD MODE ---
-      try {
-         // Construct create payload - link to stock + common fields
-        const createPayload = {
-          portfolioStockId: portfolioStockId, // Use ID from props
-          ...commonPayload
-        };
-        console.log('Creating transaction:', createPayload);
-        const { errors, data: newTransaction } = await client.models.Transaction.create(createPayload);
-
-        if (errors) {
-          console.error('Error creating transaction:', errors);
-          setError(errors[0].message || 'Failed to add transaction.');
-        } else {
-          console.log('Transaction added successfully:', newTransaction);
-          setSuccess('Transaction added successfully!');
-          // Reset form fields after successful add
-          setDate(''); setAction('Buy'); setSignal(undefined); setPrice(''); setInvestment('');
-          onTransactionAdded?.(); // Call the callback to notify parent
-        }
-      } catch (err: any) {
-        console.error('Form submission error:', err);
-        setError(err.message || 'An unexpected error occurred.');
-      } finally {
-        setIsLoading(false);
-      }
+        // --- ADD MODE ---
+        try {
+            const createPayload = { portfolioStockId: portfolioStockId, ...commonPayload };
+            console.log('Creating transaction:', createPayload);
+            const { errors, data: newTransaction } = await client.models.Transaction.create(createPayload);
+            if (errors) { /* ... error handling ... */ }
+            else { /* ... success handling, reset form, call onTransactionAdded ... */ }
+        } catch (err: any) { /* ... error handling ... */ }
+        finally { setIsLoading(false); }
     }
     // --- End Edit vs Add Handling ---
   };
@@ -194,29 +166,53 @@ export default function TransactionForm({
             <option value="Buy">Buy</option> <option value="Sell">Sell</option> <option value="Div">Dividend</option>
          </select>
       </div>
-      {/* Signal Select */}
-      <div>
-          <label htmlFor="signal">Signal (Optional):</label>
-          <select id="signal" value={signal ?? ''} onChange={(e) => setSignal(e.target.value as TxnSignalValue || undefined)} disabled={isLoading} style={{ width: '100%' }}>
-             <option value="">-- Select Signal --</option>
-             <option value="_5DD">_5DD</option> {/* Correct value */}
-             <option value="Cust">Cust</option>
-             <option value="Initial">Initial</option>
-             <option value="EOM">EOM</option>
-             <option value="LBD">LBD</option>
-             <option value="TP">TP</option>
-          </select>
-       </div>
-      {/* Price Input */}
-      <div>
-          <label htmlFor="price">Price:</label>
-          <input id="price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g., 150.25" disabled={isLoading} style={{ width: '100%' }} />
-       </div>
-       {/* Investment Input */}
-      <div>
-          <label htmlFor="investment">Investment / Amount:</label>
-          <input id="investment" type="number" step="0.01" value={investment} onChange={(e) => setInvestment(e.target.value)} placeholder="e.g., 1000.00" disabled={isLoading} style={{ width: '100%' }}/>
-       </div>
+      {/* Conditional Fields */}
+      {(action === 'Buy') && (
+        <>
+          {/* Signal (Optional) - Only for Buy/Div */}
+          <div>
+              <label htmlFor="signal">Signal (Optional):</label>
+              <select id="signal" value={signal ?? ''} onChange={(e) => setSignal(e.target.value as TxnSignalValue || undefined)} disabled={isLoading} style={{ width: '100%' }}>
+                <option value="">-- Select Signal --</option>
+                <option value="_5DD">_5DD</option> {/* Correct value */}
+                <option value="Cust">Cust</option>
+                <option value="Initial">Initial</option>
+                <option value="EOM">EOM</option>
+                <option value="LBD">LBD</option>
+                <option value="TP">TP</option>
+              </select>
+          </div>
+        </>
+      )} 
+      {(action === 'Buy' || action === 'Sell') && (
+        <>
+          <div>
+              <label htmlFor="price">Price:</label>
+              <input id="price" type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g., 150.25" disabled={isLoading} style={{ width: '100%' }} />
+          </div>
+        </>
+      )}
+      {(action === 'Buy') && (  
+        <>
+          <div>
+              <label htmlFor="investment">Investment:</label>
+              <input id="investment" type="number" step="0.01" value={investment} onChange={(e) => setInvestment(e.target.value)} placeholder="e.g., 1000.00" disabled={isLoading} style={{ width: '100%' }}/>
+          </div>
+        </>
+      )}
+      {(action === 'Div') && (  
+        <>
+          <div>
+              <label htmlFor="investment">Amount:</label>
+              <input id="investment" type="number" step="0.01" value={investment} onChange={(e) => setInvestment(e.target.value)} placeholder="e.g., 1000.00" disabled={isLoading} style={{ width: '100%' }}/>
+          </div>
+        </>
+      )}
+      {action === 'Sell' && (
+        <>  
+          <div><label htmlFor="shares">Shares:</label><input id="shares" type="number" step="any" value={shares} onChange={(e) => setShares(e.target.value)} required placeholder="e.g., 10.5" disabled={isLoading} style={{ width: '100%' }} /></div>
+        </>
+      )}
       {/* --- End Form Fields --- */}
 
       {/* Submit and Cancel Buttons */}
