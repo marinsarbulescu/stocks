@@ -10,6 +10,8 @@ const client = generateClient<Schema>();
 // Define the accurate item types
 type TransactionItem = Schema['Transaction'];
 type PortfolioStockItem = Schema['PortfolioStock']; // Needed for fetching PDP
+// @ts-ignore
+type SharesTypeValue = Schema['Transaction']['sharesType'];
 
 // Define props for the component
 interface TransactionFormProps {
@@ -57,6 +59,7 @@ export default function TransactionForm({
   const [investment, setInvestment] = useState(defaultFormState.investment);
   const [sharesInput, setSharesInput] = useState(defaultFormState.sharesInput); // Input for Sell action
   const [completedTxnId, setCompletedTxnId] = useState(defaultFormState.completedTxnId);
+  const [sharesType, setSharesType] = useState<SharesTypeValue>('Play')
 
   // State for submission status
   const [isLoading, setIsLoading] = useState(false);
@@ -83,6 +86,8 @@ export default function TransactionForm({
       setSharesInput(initialData.quantity?.toString() ?? defaultFormState.sharesInput); // Populate sharesInput from quantity if editing Sell
       // @ts-ignore
       setCompletedTxnId(initialData.completedTxnId ?? defaultFormState.completedTxnId);
+      // @ts-ignore
+      setSharesType(initialData.sharesType ?? 'Play');
     } else {
       // Reset form for Add mode
       setDate(defaultFormState.date);
@@ -92,6 +97,7 @@ export default function TransactionForm({
       setInvestment(defaultFormState.investment);
       setSharesInput(defaultFormState.sharesInput);
       setCompletedTxnId(defaultFormState.completedTxnId);
+      setSharesType('Play');
     }
   }, [isEditMode, initialData]);
   // --- End CORRECTED Effect ---
@@ -159,32 +165,6 @@ export default function TransactionForm({
       holdShares = quantity / 2;
     }
 
-    // // --- Calculate LBD (Requires fetching PortfolioStock PDP) ---
-    // if (action === 'Buy' && priceValue) {
-    //    try {
-    //     console.log(`>>> Fetching PDP for stock ID: ${portfolioStockId}`); // --- Add Log 3 ---   
-    //     const { data: stockData } = await client.models.PortfolioStock.get({ id: portfolioStockId }, { selectionSet: ['pdp'] });
-
-    //     // --- Add Log 4: Check fetch result ---
-    //     console.log('>>> Fetched stock data for LBD:', stockData);
-
-    //        const pdpValue = stockData?.pdp;
-    //        if (typeof pdpValue === 'number') {
-    //           lbd = priceValue - (priceValue * (pdpValue / 100));
-    //           console.log(`>>> LBD calculated: ${lbd}`); // --- Add Log 5 ---
-    //        } else {
-    //         console.log('>>> PDP value was not a number:', pdpValue); // --- Add Log 6 ---
-    //      }
-    //    } catch (fetchErr) {
-    //        console.warn("Could not fetch stock PDP for LBD calc", fetchErr);
-    //        // Continue without LBD, or show a warning?
-    //        setError("Warning: Could not fetch stock PDP to calculate LBD.");
-    //    }
-    // } else {
-    //     console.log('>>> Condition for LBD calculation NOT met.'); // --- Add Log 7 ---
-    // }
-    // // --- End Calculation Block ---
-
     // --- Calculate LBD & TP (Requires fetching PortfolioStock PDP and PLR) ---
     if (action === 'Buy' && priceValue) {
       try {
@@ -214,6 +194,41 @@ export default function TransactionForm({
     }
     // // --- End Calculation Block ---
 
+    // --- **** NEW: Calculate TxnProfit if applicable **** ---
+    let txnProfit: number | undefined | null = null;
+    if (action === 'Sell' && completedTxnId && priceValue && quantity && playShares) {
+      console.log(`>>> Sell action with completedTxnId: ${completedTxnId}. Fetching original Buy...`);
+      try {
+        // Fetch the original Buy transaction using the ID entered by the user
+        const { data: buyTxn, errors: buyErrors } = await client.models.Transaction.get({ id: completedTxnId }, {
+          selectionSet: ['investment'] // Only need the investment amount
+        });
+
+        if (buyErrors) throw buyErrors; // Pass Amplify errors to main catch
+
+        if (buyTxn) {
+          const buyInvestment = typeof buyTxn.investment === 'number' ? buyTxn.investment : null;
+          if (buyInvestment !== null) {
+            const buyPlayInvestment = buyInvestment / 2;
+            const sellRevenue = priceValue * quantity;
+            txnProfit = sellRevenue - buyPlayInvestment; // Calculate profit
+            console.log(`>>> Calculated TxnProfit: ${txnProfit} (Revenue: ${sellRevenue}, Cost: ${buyInvestment})`);
+          } else {
+            console.warn(`>>> Original Buy transaction (ID: ${completedTxnId}) found, but has no valid investment amount.`);
+            setError("Warning: Could not calculate profit, original Buy investment missing.");
+          }
+        } else {
+          console.warn(`>>> Original Buy transaction (ID: ${completedTxnId}) not found.`);
+          setError("Warning: Could not find referenced Buy transaction to calculate profit.");
+        }
+      } catch (fetchErr: any) {
+        console.error("Error fetching referenced Buy transaction:", fetchErr);
+        // Decide if you want to block save or just save without profit
+        setError(`Warning: Error fetching original Buy txn (${fetchErr.message}). Profit not calculated.`);
+      }
+    }
+    // --- **** End TxnProfit Calculation **** ---
+
 
     // --- Prepare Final Payload ---
     const finalPayload = {
@@ -228,7 +243,9 @@ export default function TransactionForm({
         holdShares: holdShares,
         lbd: lbd,
         tp: tp, // Store null until logic defined
+        sharesType: (action === 'Sell') ? (sharesType as SharesTypeValue) : undefined,
         completedTxnId: (action === 'Sell') ? (completedTxnId || undefined) : undefined, // Only store for Sell
+        txnProfit: txnProfit,
         // --- End Conditional ---
     };
     // --- End Payload Prep ---
@@ -317,12 +334,30 @@ export default function TransactionForm({
 
         {/* Shares - Required for Sell */}
         {action === 'Sell' && (
-            <div><label htmlFor="sharesInput">Shares:</label><input id="sharesInput" type="number" step="any" value={sharesInput} onChange={(e) => setSharesInput(e.target.value)} required placeholder="e.g., 10.5" disabled={isLoading} style={{width: '100%'}} /></div>
-        )}
+            <div>
+              <label htmlFor="sharesInput">Shares:</label>
+              <input id="sharesInput" type="number" step="any" value={sharesInput} onChange={(e) => setSharesInput(e.target.value)} required placeholder="e.g., 10.5" disabled={isLoading} style={{width: '100%'}} />
+              
+              <div style={{marginTop: '0.5rem'}}>
+                <label htmlFor="sharesType">Shares Type:</label>
+                <select
+                  id="sharesType"
+                  value={sharesType}
+                  onChange={(e) => setSharesType(e.target.value as SharesTypeValue)}
+                  required // Required when selling
+                  disabled={isLoading}
+                  style={{ width: '100%' }}
+                >
+                  <option value="Play">Play Shares</option>
+                  <option value="Hold">Hold Shares</option>
+                </select>
+              </div>
 
-        {/* Completed Txn ID - Optional for Sell */}
-        {action === 'Sell' && (
-            <div><label htmlFor="completedTxnId">Completed Txn ID (Optional):</label><input id="completedTxnId" type="text" value={completedTxnId} onChange={(e) => setCompletedTxnId(e.target.value)} placeholder="ID of Buy transaction being closed" disabled={isLoading} style={{width: '100%'}}/></div>
+              <div>
+                <label htmlFor="completedTxnId">Completed Txn ID (Optional):</label>
+                <input id="completedTxnId" type="text" value={completedTxnId} onChange={(e) => setCompletedTxnId(e.target.value)} placeholder="ID of Buy transaction being closed" disabled={isLoading} style={{width: '100%'}}/>
+              </div>
+            </div>
         )}
 
         {/* Buttons */}

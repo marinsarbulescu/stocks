@@ -11,12 +11,15 @@ const txnSignalEnum = a.enum([
   'Div'                                     // For Div action
 ]);
 
+const sharesTypeEnum = a.enum(['Play', 'Hold']);
+
 /* Define the schema */
 const schema = a.schema({
   StockType: stockTypeEnum,
   Region: regionEnum,
   TxnAction: txnActionEnum,
   TxnSignal: txnSignalEnum,
+  SharesType: sharesTypeEnum,
 
   // Define the model for storing portfolio stocks
   PortfolioStock: a
@@ -43,9 +46,11 @@ const schema = a.schema({
       quantity: a.float(),       // Shares bought or sold
       playShares: a.float(),      // Play Shares. The number of shares that we will have available to sell at TP. (quantity / 2)
       holdShares: a.float(),      // Hold Shares. The number of shares that we will hold on. (quantity / 2)
+      sharesType: a.ref('SharesType'),
       lbd: a.float(),             // Last Buy Dip ($). Calculated target price for a new Buy Signal. LBD = Buy Price - (Buy Price * PDP)
       tp: a.float(),              // Take Profit ($). Calculated target price, at which we get a Sell signal. TP = Buy Price + (Buy Price * PDP * PLR)
       completedTxnId: a.string(), // Link to another Txn ID (for Sell closing a Buy?)
+      txnProfit: a.float(),
       portfolioStockId: a.id().required(), // Foreign key ID
       portfolioStock: a.belongsTo('PortfolioStock', 'portfolioStockId'), // Define the relationship
     })
