@@ -5,7 +5,11 @@ const stockTypeEnum = a.enum(['Stock', 'ETF', 'Crypto']); // Changed order to ma
 const regionEnum = a.enum(['US', 'EU', 'APAC']);
 
 const txnActionEnum = a.enum(['Buy', 'Sell', 'Div']); // Div = Dividend
-const txnSignalEnum = a.enum(['_5DD', 'Cust', 'Initial', 'EOM', 'LBD', 'TP']);
+const txnSignalEnum = a.enum([
+  '_5DD', 'Cust', 'Initial', 'EOM', 'LBD', // For Buy action
+  'TPH', 'TPP',                             // For Sell action
+  'Div'                                     // For Div action
+]);
 
 /* Define the schema */
 const schema = a.schema({
@@ -33,10 +37,15 @@ const schema = a.schema({
     .model({
       date: a.date().required(),           // Transaction date (YYYY-MM-DD)
       action: a.ref('TxnAction').required(), // Reference the TxnAction enum
-      signal: a.ref('TxnSignal'),           // Reference the TxnSignal enum (optional?)
-      price: a.float(),                     // Price (optional? required?)
-      investment: a.float(),                // Investment amount (optional? required?)
-      shares: a.float(),
+      signal: a.ref('TxnSignal'),           // Reference the TxnSignal enum
+      price: a.float(),                     // Price
+      investment: a.float(),                // Investment amount
+      quantity: a.float(),       // Shares bought or sold
+      playShares: a.float(),      // Play Shares. The number of shares that we will have available to sell at TP. (quantity / 2)
+      holdShares: a.float(),      // Hold Shares. The number of shares that we will hold on. (quantity / 2)
+      lbd: a.float(),             // Last Buy Dip ($). Calculated target price for a new Buy Signal. LBD = Buy Price - (Buy Price * PDP)
+      tp: a.float(),              // Take Profit ($). Calculated target price, at which we get a Sell signal. TP = Buy Price + (Buy Price * PDP * PLR)
+      completedTxnId: a.string(), // Link to another Txn ID (for Sell closing a Buy?)
       portfolioStockId: a.id().required(), // Foreign key ID
       portfolioStock: a.belongsTo('PortfolioStock', 'portfolioStockId'), // Define the relationship
     })

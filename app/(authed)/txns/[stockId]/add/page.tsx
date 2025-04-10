@@ -6,7 +6,6 @@ import { useParams } from 'next/navigation'; // Hook to get URL params
 import TransactionForm from '@/app/components/TransactionForm'; // Adjust path if needed
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '@/amplify/data/resource';
-
 import { FaEdit, FaTrashAlt } from 'react-icons/fa';
 
 const client = generateClient<Schema>();
@@ -16,7 +15,7 @@ export default function AddTransactionForStockPage() {
   const params = useParams();
   const stockId = params.stockId as string; // Get stockId from URL
 
-  type SortableTxnKey = 'date' | 'price' | 'action' | 'signal' | 'investment'; // Add others if needed
+  type SortableTxnKey = 'date' | 'price' | 'action' | 'signal' | 'investment' | 'quantity' | 'lbd' | 'tp'; // Add others if needed
   const [txnSortConfig, setTxnSortConfig] = useState<{ key: SortableTxnKey; direction: 'ascending' | 'descending' } | null>(null);
 
   const [stockSymbol, setStockSymbol] = useState<string | undefined>(undefined);
@@ -73,9 +72,8 @@ export default function AddTransactionForStockPage() {
     try {
         console.log('Fetching all buy transactions for budget calc...');
         const { data: userTxns, errors } = await client.models.Transaction.list({
-            // filter: { action: { eq: 'Buy' } },
             // Fetch all, pagination might be needed for very large numbers later
-            selectionSet: ['id', 'action', 'investment', 'price', 'shares']
+            selectionSet: ['id', 'action', 'investment', 'price', 'quantity']
         });
         if (errors) throw errors;
         // @ts-ignore
@@ -99,45 +97,33 @@ export default function AddTransactionForStockPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleUpdateTransaction = async (updatedTxnData: TransactionItem) => {
-    // Similar logic to handleUpdateStock, but uses Transaction model
-    console.log('Attempting to update transaction:', updatedTxnData);
+  const handleUpdateTransaction = async (updatedTxnDataFromForm: TransactionItem) => {
+    // updatedTxnDataFromForm comes directly from the form's onUpdate prop
+    // It should already contain the ID and all calculated/updated fields
+    console.log('Attempting to update transaction with data from form:', updatedTxnDataFromForm);
     setTxnError(null);
-    try {
-      // Prepare payload - ensure 'id' is present, potentially omit read-only fields
-      // @ts-ignore 
-      const payload = {
-        // @ts-ignore  
-        id: updatedTxnData.id, // Required
-        // @ts-ignore
-        date: updatedTxnData.date,
-        // @ts-ignore
-        action: updatedTxnData.action,
-        // @ts-ignore
-        signal: updatedTxnData.signal,
-        // @ts-ignore
-        price: updatedTxnData.price,
-        // @ts-ignore
-        investment: updatedTxnData.investment,
-        // @ts-ignore
-        portfolioStockId: updatedTxnData.portfolioStockId // Include if needed by update
-       };
+    //setIsLoading(true); // Add loading state indication maybe
   
-        // @ts-ignore
-        const { data: updatedTxn, errors } = await client.models.Transaction.update(payload as Schema['Transaction']); // Use explicit payload, cast if needed
+    try {
+      // We expect updatedTxnDataFromForm to have the required structure, including 'id'
+      // The 'as any' can help bypass TS issues if the exact type still mismatches update's expectation
+      const { data: updatedTxn, errors } = await client.models.Transaction.update(updatedTxnDataFromForm as any);
   
       if (errors) throw errors;
   
       console.log('Transaction updated successfully:', updatedTxn);
       setIsEditingTxn(false);
       setTxnToEdit(null);
-      fetchTransactions(); // Refresh list
+      fetchTransactions();        // Refresh list for THIS stock
+      fetchAllUserTransactions(); // Refresh list for ALL transactions (for budget calc)
     } catch (err: any) {
       console.error('Error updating transaction:', err);
-      setTxnError(err.message || 'Failed to update transaction.');
-      // Maybe keep form open on error?
+      const errorMessage = Array.isArray(err) ? err[0].message : (err.message || "Failed to update transaction.");
+      setTxnError(errorMessage);
+    } finally {
+      // @ts-ignore 
+      //setIsLoading(false); // Ensure loading state is reset
     }
-    // Add loading state logic if desired
   };
 
   const handleCancelEditTxn = () => {
@@ -185,7 +171,10 @@ export default function AddTransactionForStockPage() {
         // @ts-ignore
         sort: (t) => t.date('DESC'), // Sort newest first
          // Select specific fields if needed
-         selectionSet: ['id', 'date', 'action', 'signal', 'price', 'investment']
+         selectionSet: [
+          'id', 'date', 'action', 'signal', 'price', 'investment',
+          'quantity', 'playShares', 'holdShares', 'lbd', 'tp', 'completedTxnId'
+      ]
       });
 
       if (errors) throw errors;
@@ -213,7 +202,7 @@ export default function AddTransactionForStockPage() {
       // @ts-ignore - Acknowledge potential type issues on txn
       const price = typeof txn.price === 'number' ? txn.price : 0;
       // @ts-ignore - Acknowledge potential type issues on txn
-      const shares = typeof txn.shares === 'number' ? txn.shares : 0;
+      const quantity = typeof txn.quantity === 'number' ? txn.quantity : 0;
       // @ts-ignore - Keep if needed for txn type
       
       // @ts-ignore - Acknowledge potential type issues on txn
@@ -223,7 +212,7 @@ export default function AddTransactionForStockPage() {
       // @ts-ignore - Acknowledge potential type issues on txn
       } else if (txn.action === 'Sell') {
         // Sells increase budget (decrease spending sum)
-        const sellReturn = price * shares;
+        const sellReturn = price * quantity;
         return sum - sellReturn;
       } else {
         return sum; // Ignore other types if any
@@ -326,7 +315,8 @@ export default function AddTransactionForStockPage() {
             initialData={txnToEdit}
             onUpdate={handleUpdateTransaction}
             onCancel={handleCancelEditTxn}
-            // No portfolioStockId needed if editing existing txn
+            portfolioStockId={stockId}
+            portfolioStockSymbol={stockSymbol}
         />
         ) : (
             // Render form in Add mode (existing setup)
@@ -351,22 +341,29 @@ export default function AddTransactionForStockPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #ccc', textAlign: 'left' }}>
-              <th style={{ padding: '8px', cursor: 'pointer' }} onClick={() => requestTxnSort('date')}>
-                Date {txnSortConfig?.key === 'date' ? (txnSortConfig.direction === 'ascending' ? '▲' : '▼') : null}
-              </th>
+                <th style={{ padding: '8px', cursor: 'pointer' }} onClick={() => requestTxnSort('date')}>
+                  Date {txnSortConfig?.key === 'date' ? (txnSortConfig.direction === 'ascending' ? '▲' : '▼') : null}
+                </th>
+                <th style={{ padding: '8px' }}>Txn Id</th>
                 <th style={{ padding: '8px' }}>Action</th>
                 <th style={{ padding: '8px' }}>Signal</th>
                 <th style={{ padding: '8px', cursor: 'pointer' }} onClick={() => requestTxnSort('price')}>
                   Price {txnSortConfig?.key === 'price' ? (txnSortConfig.direction === 'ascending' ? '▲' : '▼') : null}
                 </th>
-                <th style={{ padding: '8px' }}>Investment/Amount</th>
+                <th style={{ padding: '8px' }}>Inv.</th>
+                <th style={{ padding: '8px' }}>P-Shs</th>
+                <th style={{ padding: '8px' }}>H-Shs</th>
+                <th style={{ padding: '8px' }}>T-Shs</th>
+                <th style={{ padding: '8px' }}>LBD</th>
+                <th style={{ padding: '8px' }}>TP</th>
+                <th style={{ padding: '8px' }}>Buy Id</th>
                 <th style={{ padding: '8px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '1rem' }}>
+                  <td colSpan={13} style={{ textAlign: 'center', padding: '1rem' }}>
                     No transactions found for this stock.
                   </td>
                 </tr>
@@ -377,6 +374,8 @@ export default function AddTransactionForStockPage() {
                     {/* @ts-ignore */ }
                     <td style={{ padding: '8px' }}>{txn.date}</td>
                     {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.id}</td>
+                    {/* @ts-ignore */ }
                     <td style={{ padding: '8px' }}>{txn.action}</td>
                     {/* @ts-ignore */ }
                     <td style={{ padding: '8px' }}>{txn.signal || '--'}</td>
@@ -384,6 +383,21 @@ export default function AddTransactionForStockPage() {
                     <td style={{ padding: '8px' }}>{txn.price?.toFixed(2) ?? '--'}</td>
                     {/* @ts-ignore */ }
                     <td style={{ padding: '8px' }}>{txn.investment?.toFixed(2) ?? '--'}</td>
+
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.playShares?.toFixed(5) ?? '--'}</td>
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.holdShares?.toFixed(5) ?? '--'}</td>
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.quantity?.toFixed(5) ?? '--'}</td>
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.lbd?.toFixed(2) ?? '--'}</td>
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.tp?.toFixed(2) ?? '--'}</td>
+                    {/* @ts-ignore */ }
+                    <td style={{ padding: '8px' }}>{txn.completedTxnId ?? '--'}</td>
+                    
+                    
                     <td style={{ padding: '8px', textAlign: 'center' }}>
                         {/* Edit Button placeholder */}
                         <button
